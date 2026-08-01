@@ -20,15 +20,13 @@ export default async function handler(req, res) {
     const filePath = Array.isArray(path) ? path.join('/') : path;
     
     // 3. 저장소 및 브랜치 자동 지정
-    // bipapalula3.github.io 는 기본 브랜치가 master인 경우가 많습니다.
     const targetRepo = repo || 'YMPL';
     const defaultBranch = targetRepo.includes('github.io') ? 'master' : 'main';
 
-    // 1차 시도 URL
     let targetUrl = `https://raw.githubusercontent.com/bipapalula3/${targetRepo}/${defaultBranch}/${encodeURI(filePath)}`;
     let response = await fetch(targetUrl);
 
-    // 만약 404가 나오면 다른 브랜치(main <-> master)로 2차 재시도
+    // 404 발생 시 대체 브랜치(main <-> master) 시도
     if (!response.ok && response.status === 404) {
       const fallbackBranch = defaultBranch === 'main' ? 'master' : 'main';
       const fallbackUrl = `https://raw.githubusercontent.com/bipapalula3/${targetRepo}/${fallbackBranch}/${encodeURI(filePath)}`;
@@ -45,17 +43,13 @@ export default async function handler(req, res) {
 
     const lowerPath = filePath.toLowerCase();
 
-    // ----------------------------------------------------
-    // A. JSON 데이터 처리
-    // ----------------------------------------------------
+    // A. JSON 파일
     if (lowerPath.endsWith('.json')) {
       const jsonData = await response.json();
       return res.status(200).json(jsonData);
     } 
 
-    // ----------------------------------------------------
-    // B. 이진(Binary) 데이터 처리 (Buffer)
-    // ----------------------------------------------------
+    // B. 이진(Binary) 파일 (이미지, 오디오, 폰트 등)
     else if (
       lowerPath.endsWith('.png') || lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg') ||
       lowerPath.endsWith('.gif') || lowerPath.endsWith('.webp') || lowerPath.endsWith('.ico') ||
@@ -73,33 +67,29 @@ export default async function handler(req, res) {
       else if (lowerPath.endsWith('.gif')) res.setHeader('Content-Type', 'image/gif');
       else if (lowerPath.endsWith('.webp')) res.setHeader('Content-Type', 'image/webp');
       else if (lowerPath.endsWith('.ico')) res.setHeader('Content-Type', 'image/x-icon');
-      
       else if (lowerPath.endsWith('.mp3')) res.setHeader('Content-Type', 'audio/mpeg');
       else if (lowerPath.endsWith('.m4a')) res.setHeader('Content-Type', 'audio/mp4');
       else if (lowerPath.endsWith('.wav')) res.setHeader('Content-Type', 'audio/wav');
       else if (lowerPath.endsWith('.ogg')) res.setHeader('Content-Type', 'audio/ogg');
       else if (lowerPath.endsWith('.mp4')) res.setHeader('Content-Type', 'video/mp4');
       else if (lowerPath.endsWith('.webm')) res.setHeader('Content-Type', 'video/webm');
-      
       else if (lowerPath.endsWith('.woff')) res.setHeader('Content-Type', 'font/woff');
       else if (lowerPath.endsWith('.woff2')) res.setHeader('Content-Type', 'font/woff2');
       else if (lowerPath.endsWith('.ttf')) res.setHeader('Content-Type', 'font/ttf');
       else if (lowerPath.endsWith('.otf')) res.setHeader('Content-Type', 'font/otf');
-      
       else if (lowerPath.endsWith('.pdf')) res.setHeader('Content-Type', 'application/pdf');
       else if (lowerPath.endsWith('.zip')) res.setHeader('Content-Type', 'application/zip');
 
       return res.status(200).send(buffer);
     } 
 
-    // ----------------------------------------------------
-    // C. 텍스트 데이터 처리 (UTF-8)
-    // ----------------------------------------------------
+    // C. 텍스트 파일 (HTML, TXT, XML, JS 등)
     else {
-      const textData = await response.text();
+      let textData = await response.text();
 
-      if (lowerPath.endsWith('.html')) res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      else if (lowerPath.endsWith('.txt')) res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      if (lowerPath.endsWith('.html')) {
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      } else if (lowerPath.endsWith('.txt')) res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       else if (lowerPath.endsWith('.css')) res.setHeader('Content-Type', 'text/css; charset=utf-8');
       else if (lowerPath.endsWith('.js')) res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
       else if (lowerPath.endsWith('.xml')) res.setHeader('Content-Type', 'application/xml; charset=utf-8');
