@@ -1,5 +1,5 @@
 export default async function handler(req, res) {
-  // 1. CORS 설정 (어디서든 fetch 및 다운로드 가능)
+  // 1. CORS 설정
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
 
@@ -7,7 +7,7 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
-  // 2. Vercel Edge 캐싱 설정 (1시간 동안 캐시)
+  // 2. Vercel Edge 캐싱 설정 (1시간)
   res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
 
   try {
@@ -19,13 +19,25 @@ export default async function handler(req, res) {
 
     const filePath = Array.isArray(path) ? path.join('/') : path;
     
-    // 3. 저장소 선택 (쿼리 파라미터 repo가 없으면 기본값 YMPL, repo=blog 이거나 지정시 해당 저장소 사용)
-    // 예: ?repo=bipapalula3.github.io 또는 ?repo=YMPL
+    // 3. 저장소 및 브랜치 자동 지정
+    // bipapalula3.github.io 는 기본 브랜치가 master인 경우가 많습니다.
     const targetRepo = repo || 'YMPL';
-    const GITHUB_RAW_BASE = `https://raw.githubusercontent.com/bipapalula3/${targetRepo}/main`;
-    const targetUrl = `${GITHUB_RAW_BASE}/${encodeURI(filePath)}`;
+    const defaultBranch = targetRepo.includes('github.io') ? 'master' : 'main';
 
-    const response = await fetch(targetUrl);
+    // 1차 시도 URL
+    let targetUrl = `https://raw.githubusercontent.com/bipapalula3/${targetRepo}/${defaultBranch}/${encodeURI(filePath)}`;
+    let response = await fetch(targetUrl);
+
+    // 만약 404가 나오면 다른 브랜치(main <-> master)로 2차 재시도
+    if (!response.ok && response.status === 404) {
+      const fallbackBranch = defaultBranch === 'main' ? 'master' : 'main';
+      const fallbackUrl = `https://raw.githubusercontent.com/bipapalula3/${targetRepo}/${fallbackBranch}/${encodeURI(filePath)}`;
+      const fallbackResponse = await fetch(fallbackUrl);
+      
+      if (fallbackResponse.ok) {
+        response = fallbackResponse;
+      }
+    }
 
     if (!response.ok) {
       return res.status(response.status).send(`파일을 찾을 수 없습니다: ${filePath} (저장소: ${targetRepo})`);
@@ -42,26 +54,20 @@ export default async function handler(req, res) {
     } 
 
     // ----------------------------------------------------
-    // B. 이진(Binary) 데이터 처리 (Buffer로 변환)
-    //    : 이미지, 오디오, 비디오, 폰트, PDF, ZIP 등
+    // B. 이진(Binary) 데이터 처리 (Buffer)
     // ----------------------------------------------------
     else if (
-      // 1. 이미지
       lowerPath.endsWith('.png') || lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg') ||
       lowerPath.endsWith('.gif') || lowerPath.endsWith('.webp') || lowerPath.endsWith('.ico') ||
-      // 2. 오디오 / 비디오
       lowerPath.endsWith('.mp3') || lowerPath.endsWith('.m4a') || lowerPath.endsWith('.wav') ||
       lowerPath.endsWith('.ogg') || lowerPath.endsWith('.mp4') || lowerPath.endsWith('.webm') ||
-      // 3. 폰트
       lowerPath.endsWith('.woff') || lowerPath.endsWith('.woff2') ||
       lowerPath.endsWith('.ttf') || lowerPath.endsWith('.otf') ||
-      // 4. 문서 & 압축
       lowerPath.endsWith('.pdf') || lowerPath.endsWith('.zip')
     ) {
       const arrayBuffer = await response.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
 
-      // --- Content-Type 헤더 지정 ---
       if (lowerPath.endsWith('.png')) res.setHeader('Content-Type', 'image/png');
       else if (lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg')) res.setHeader('Content-Type', 'image/jpeg');
       else if (lowerPath.endsWith('.gif')) res.setHeader('Content-Type', 'image/gif');
@@ -87,13 +93,11 @@ export default async function handler(req, res) {
     } 
 
     // ----------------------------------------------------
-    // C. 텍스트 기반 데이터 처리 (UTF-8)
-    //    : HTML, TXT, ads.txt, sitemap.xml, CSS, JS 등
+    // C. 텍스트 데이터 처리 (UTF-8)
     // ----------------------------------------------------
     else {
       const textData = await response.text();
 
-      // --- Content-Type 헤더 지정 ---
       if (lowerPath.endsWith('.html')) res.setHeader('Content-Type', 'text/html; charset=utf-8');
       else if (lowerPath.endsWith('.txt')) res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       else if (lowerPath.endsWith('.css')) res.setHeader('Content-Type', 'text/css; charset=utf-8');
